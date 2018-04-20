@@ -37,7 +37,7 @@ class WinAuthenticator(LocalAuthenticator):
     @default('add_user_cmd')
     def _add_user_cmd_default(self):
         """Guess the most likely-to-work adduser command for each platform"""
-        raise ValueError("I don't know how to create users on Windows")
+        raise NotImplementedError("I don't know how to create users on Windows")
 
     def normalize_username(self, username):
         """Normalize the given username and return it
