@@ -2,9 +2,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from tornado.concurrent import run_on_executor
 from traitlets import default, Any, Bool
+from tornado import gen
 
 from jupyterhub.auth import LocalAuthenticator
-from jupyterhub.utils import maybe_future
 
 import win32security
 import pywintypes
@@ -46,18 +46,19 @@ class WinAuthenticator(LocalAuthenticator):
         username = self.username_map.get(username, username)
         return username
 
-    async def add_user(self, user):
+    @gen.coroutine
+    def add_user(self, user):
         """Hook called whenever a new user is added
         self.create_system_users not supported.
         """
-        user_exists = await maybe_future(self.system_user_exists(user))
+        user_exists = yield gen.maybe_future(self.system_user_exists(user))
         if not user_exists:
             if self.create_system_users:
                 raise KeyError("There is no support for create_system_users on Windows")
             else:
                 raise KeyError("User %s does not exist." % user.name)
 
-        await maybe_future(super().add_user(user))
+        yield gen.maybe_future(super().add_user(user))
 
     @staticmethod
     def system_user_exists(user):
@@ -85,7 +86,7 @@ class WinAuthenticator(LocalAuthenticator):
                     return True
         return False
 
-    @run_on_executor
+    @gen.coroutine
     def authenticate(self, handler, data):
         """Authenticate with Windows, and return the username if login is successful.
         Return None otherwise.
@@ -112,7 +113,7 @@ class WinAuthenticator(LocalAuthenticator):
             },
         }
 
-    @run_on_executor
+    @gen.coroutine
     def pre_spawn_start(self, user, spawner):
         """Load profile for user if so configured"""
 
@@ -121,10 +122,8 @@ class WinAuthenticator(LocalAuthenticator):
         if not self.open_sessions:
             return
         try:
-            loop = asyncio.new_event_loop()
-            auth_state = loop.run_until_complete(user.get_auth_state())
+            auth_state = yield gen.maybe_future(user.get_auth_state())
             token = pywintypes.HANDLE(auth_state['auth_token'])
-
             # Check if user has a roaming Profile
             user_info = win32net.NetUserGetInfo(None, user.name, 4)
             profilepath = user_info['profile']
@@ -145,7 +144,7 @@ class WinAuthenticator(LocalAuthenticator):
                 # Detach so the underlying winhandle stays alive
                 token.Detach()
 
-    @run_on_executor
+    @gen.coroutine
     def post_spawn_stop(self, user, spawner):
         """Unload profile for user if we were configured to opened one"""
 
@@ -154,8 +153,7 @@ class WinAuthenticator(LocalAuthenticator):
         if not self.open_sessions:
             return
         try:
-            loop = asyncio.new_event_loop()
-            auth_state = loop.run_until_complete(user.get_auth_state())
+            auth_state = yield gen.maybe_future(user.get_auth_state())
             token = pywintypes.HANDLE(auth_state['auth_token'])
             win32profile.UnloadUserProfile(token, self._hreg)
         except Exception as exc:
