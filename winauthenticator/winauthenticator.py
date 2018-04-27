@@ -4,7 +4,7 @@ from tornado.concurrent import run_on_executor
 from traitlets import default, Any, Bool
 from tornado import gen
 
-from jupyterhub.auth import LocalAuthenticator
+from jupyterhub.auth import LocalAuthenticator, Authenticator
 
 import win32security
 import pywintypes
@@ -51,14 +51,15 @@ class WinAuthenticator(LocalAuthenticator):
         """Hook called whenever a new user is added
         self.create_system_users not supported.
         """
+        islocaluser = '@' not in user.name
         user_exists = yield gen.maybe_future(self.system_user_exists(user))
-        if not user_exists:
+        if not user_exists and islocaluser:
             if self.create_system_users:
                 raise KeyError("There is no support for create_system_users on Windows")
             else:
                 raise KeyError("User %s does not exist." % user.name)
 
-        yield gen.maybe_future(super().add_user(user))
+        yield gen.maybe_future(Authenticator.add_user(self, user))
 
     @staticmethod
     def system_user_exists(user):
@@ -91,10 +92,16 @@ class WinAuthenticator(LocalAuthenticator):
         """Authenticate with Windows, and return the username if login is successful.
         Return None otherwise.
         """
+        domain = '.'
+        username = data['username']
+
+        if '@' in data['username']:
+            username, domain = username.split('@')
+
         try:
             token = win32security.LogonUser(
-                data['username'],
-                ".",
+                username,
+                domain,
                 data['password'],
                 win32security.LOGON32_LOGON_NETWORK,
                 win32security.LOGON32_PROVIDER_DEFAULT)
@@ -118,22 +125,25 @@ class WinAuthenticator(LocalAuthenticator):
         """Load profile for user if so configured"""
 
         token = None
+        profilepath = None
 
         if not self.open_sessions:
             return
         try:
             auth_state = yield gen.maybe_future(user.get_auth_state())
             token = pywintypes.HANDLE(auth_state['auth_token'])
-            # Check if user has a roaming Profile
-            user_info = win32net.NetUserGetInfo(None, user.name, 4)
-            profilepath = user_info['profile']
+
+            if '@' not in user.name:
+                # Check if user has a roaming Profile
+                user_info = win32net.NetUserGetInfo(None, user.name, 4)
+                profilepath = user_info['profile']
 
             # Loading the profile will create the USERPROFILE and APPDATA folders,
             # if not present. To load the profile, the running process needs to have
             # the SE_RESTORE_NAME and SE_BACKUP_NAME privileges.
             self._hreg = win32profile.LoadUserProfile(
                 token,
-                {"UserName" : user.name, 'ProfilePath' : profilepath}
+                {'UserName':user.name, 'ProfilePath':profilepath}
             )
         except Exception as exc:
             self.log.warning("Failed to load user profile for %s: %s", user.name, exc)
