@@ -19,7 +19,7 @@ pip3 install -e
 To enable, add the following to your jupyterhub file:
 
 ```
-C.JupyterHub.authenticator_class = 'winauthenticator.WinAuthenticator'
+c.JupyterHub.authenticator_class = 'winauthenticator.WinAuthenticator'
 ```
 
 # Required configuration
@@ -27,7 +27,7 @@ C.JupyterHub.authenticator_class = 'winauthenticator.WinAuthenticator'
 Since the WinAuthenticator stores the auth token in the auth_state, it needs to be enabled.
 
 ```
-C.WinAuthenticator.enable_auth_state = True
+c.WinAuthenticator.enable_auth_state = True
 ```
 
 # Optional Configuration
