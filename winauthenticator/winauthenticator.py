@@ -1,7 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from tornado.concurrent import run_on_executor
-from traitlets import default, Any, Bool
+from traitlets import default, Any, Bool, Unicode
 
 from jupyterhub.auth import LocalAuthenticator, Authenticator
 from jupyterhub.utils import maybe_future
@@ -33,6 +33,11 @@ class WinAuthenticator(LocalAuthenticator):
         """
                         ).tag(config=True)
 
+    domain_to_add_to_username = Unicode("",
+                         help="""
+        Domain to add to the username, as if typed in the login form. If empty, nothing will be added.
+        """
+                        ).tag(config=True)
 
     @default('add_user_cmd')
     def _add_user_cmd_default(self):
@@ -92,9 +97,13 @@ class WinAuthenticator(LocalAuthenticator):
         Return None otherwise.
         """
         domain = '.'
+
+        if self.domain_to_add_to_username:
+            if not '@' in data['username']:
+                data['username'] += "@" + self.domain_to_add_to_username
         username = data['username']
 
-        if '@' in data['username']:
+        if '@' in username:
             username, domain = username.split('@')
 
         try:
@@ -113,6 +122,7 @@ class WinAuthenticator(LocalAuthenticator):
             return None
         return {
             'name': data['username'],
+            'domain': domain,
             'auth_state': {
                 # Detach so the underlying winhandle stays alive
                 'auth_token': token.Detach(),
