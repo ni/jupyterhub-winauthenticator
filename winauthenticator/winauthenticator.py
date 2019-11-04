@@ -29,7 +29,13 @@ class WinAuthenticator(LocalAuthenticator):
         Whether to load a user profile when spawners are started.
         This may trigger things like creating USERPROFILE and APPDATA directories
         If any errors are encountered when loading/unloading user profiles,
-        this is automatically set to False.
+        this is set to False if disable_open_sessions_after_failure is True.
+        """
+                        ).tag(config=True)
+
+    disable_open_sessions_after_failure = Bool(True,
+                         help="""
+        Whether to disable open_sessions after a failure.
         """
                         ).tag(config=True)
 
@@ -147,8 +153,9 @@ class WinAuthenticator(LocalAuthenticator):
             )
         except Exception as exc:
             self.log.warning("Failed to load user profile for %s: %s", user.name, exc)
-            self.log.warning("Disabling user profile from now on.")
-            self.open_sessions = False
+            if self.disable_open_sessions_after_failure:
+                self.log.warning("Disabling user profile from now on.")
+                self.open_sessions = False
         finally:
             if token:
                 # Detach so the underlying winhandle stays alive
