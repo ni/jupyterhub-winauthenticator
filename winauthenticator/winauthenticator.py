@@ -35,7 +35,7 @@ class WinAuthenticator(LocalAuthenticator):
 
     domain_to_add_to_username = Unicode("",
                          help="""
-        Domain to add to the username typed in the login form. If empty, nothing will be added.
+        Domain to add to the username, as if typed in the login form. If empty, nothing will be added.
         """
                         ).tag(config=True)
 
