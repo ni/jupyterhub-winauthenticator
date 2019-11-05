@@ -175,8 +175,6 @@ class WinAuthenticator(LocalAuthenticator):
             win32profile.UnloadUserProfile(token, self._hreg)
         except Exception as exc:
             self.log.warning("Failed to unload user profile for %s: %s", user.name, exc)
-            self.log.warning("Disabling user profile from now on.")
-            self.open_sessions = False
         finally:
             if token:
                 # Detach so token stays valid
