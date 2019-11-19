@@ -1,4 +1,6 @@
 import asyncio
+import traceback
+
 from concurrent.futures import ThreadPoolExecutor
 from tornado.concurrent import run_on_executor
 from traitlets import default, Any, Bool, Unicode
@@ -8,8 +10,10 @@ from jupyterhub.utils import maybe_future
 
 import win32security
 import pywintypes
+import winerror
 import win32profile
 import win32net
+
 
 class WinAuthenticator(LocalAuthenticator):
     """Authenticate local Windows users"""
@@ -62,6 +66,52 @@ class WinAuthenticator(LocalAuthenticator):
                 raise KeyError("User %s does not exist." % user.name)
 
         await maybe_future(Authenticator.add_user(self, user))
+
+    async def refresh_user(self, user, handler=None):
+        """Refresh auth data for a given user
+        Allows refreshing or invalidating auth data.
+
+        Args:
+            user (User): the user to refresh
+            handler (tornado.web.RequestHandler or None): the current request handler
+        Returns:
+            auth_data (bool):
+                Return **True** if auth data for the user is up-to-date
+                and no updates are required.
+                Return **False** if the user's auth data has expired,
+                and they should be required to login again.
+                WinAuthenticator's implementation never returns a dict.
+        """
+
+        token = None
+
+        if not self.open_sessions:
+            return True
+        try:
+            #loop = asyncio.new_event_loop()
+            auth_state = await user.get_auth_state()
+            if not auth_state:
+                return False  # Stale auth state, will ask user to re-login
+            token = pywintypes.HANDLE(auth_state['auth_token'])
+
+            # Check token validity
+            _ = win32security.GetTokenInformation(
+                token, win32security.TokenType
+            )
+            # If we're here, the token is valid and we just go to the finally clause
+        except pywintypes.error as err:
+            # If it's an expired user token, no warning.
+            if err.winerror != winerror.ERROR_INVALID_HANDLE:
+                self.log.warning("Failed to check auth state and token for %s: %s\n%s", user.name, exc, traceback.format_exc())
+            if token:
+                # Detach so the underlying winhandle stays alive
+                token.Detach()
+            return False
+        finally:
+            if token:
+                # Detach so the underlying winhandle stays alive
+                token.Detach()
+        return True
 
     @staticmethod
     def system_user_exists(user):
@@ -150,11 +200,10 @@ class WinAuthenticator(LocalAuthenticator):
             # if not present. To load the profile, the running process needs to have
             # the SE_RESTORE_NAME and SE_BACKUP_NAME privileges.
             self._hreg = win32profile.LoadUserProfile(
-                token,
-                {'UserName':user.name, 'ProfilePath':profilepath}
+                token, {'UserName': user.name, 'ProfilePath': profilepath}
             )
         except Exception as exc:
-            self.log.warning("Failed to load user profile for %s: %s", user.name, exc)
+            self.log.warning("Failed to load user profile for %s: %s\n%s", user.name, exc, traceback.format_exc())
         finally:
             if token:
                 # Detach so the underlying winhandle stays alive
