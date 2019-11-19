@@ -88,7 +88,6 @@ class WinAuthenticator(LocalAuthenticator):
         if not self.open_sessions:
             return True
         try:
-            #loop = asyncio.new_event_loop()
             auth_state = await user.get_auth_state()
             if not auth_state:
                 return False  # Stale auth state, will ask user to re-login
